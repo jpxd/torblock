@@ -1,0 +1,6 @@
+displayName: TorBlock
+type: middleware
+
+import: github.com/jpxd/torblock
+
+summary: 'Blocks Tor exit nodes from accessing services'
