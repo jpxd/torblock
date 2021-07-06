@@ -1,18 +1,17 @@
 package torblock
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"net/url"
 	"regexp"
-	"strings"
 	"text/template"
 	"time"
+
+	"inet.af/netaddr"
 )
 
 var ipRegex = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+\b`)
@@ -38,7 +37,7 @@ type TorBlock struct {
 	template       *template.Template
 	addressListURL string
 	updateInterval time.Duration
-	blockedIPs     []net.IP
+	blockedIPs     *netaddr.IPSet
 }
 
 // New creates a new Demo plugin.
@@ -57,7 +56,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		template:       template.New("torblock").Delims("[[", "]]"),
 		addressListURL: config.AddressListURL,
 		updateInterval: time.Duration(config.UpdateInterval) * time.Second,
-		blockedIPs:     make([]net.IP, 0),
+		blockedIPs:     &netaddr.IPSet{},
 	}
 	a.UpdateBlockedIPs()
 	go a.UpdateWorker()
@@ -66,46 +65,19 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 }
 
 func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	requestIPs := a.GetRemoteIPs(req)
+	remoteAddr, err := netaddr.ParseIPPort(req.RemoteAddr)
+	if err != nil {
+		log.Printf("torblock: bad request remote address")
+		return
+	}
 
-	for _, deniedIP := range a.blockedIPs {
-		for _, requestIP := range requestIPs {
-			if bytes.Compare(deniedIP, requestIP) == 0 {
-				log.Printf("torblock: request denied (%s)", requestIP)
-				rw.WriteHeader(http.StatusForbidden)
-				return
-			}
-		}
+	if a.blockedIPs.Contains(remoteAddr.IP()) {
+		log.Printf("torblock: request denied (%s)", remoteAddr.IP())
+		rw.WriteHeader(http.StatusForbidden)
+		return
 	}
 
 	a.next.ServeHTTP(rw, req)
-}
-
-// GetRemoteIP returns a list of IPs that are associated with this request.
-func (a *TorBlock) GetRemoteIPs(req *http.Request) []net.IP {
-	var ips []net.IP
-
-	xff := req.Header.Get("X-Forwarded-For")
-	xffs := strings.Split(xff, ",")
-	for _, address := range xffs {
-		trimmed := strings.TrimSpace(address)
-		ip := net.ParseIP(trimmed)
-		if ip != nil {
-			ips = append(ips, ip)
-		}
-	}
-
-	address, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err != nil {
-		address = req.RemoteAddr
-	}
-	trimmed := strings.TrimSpace(address)
-	ip := net.ParseIP(trimmed)
-	if ip != nil {
-		ips = append(ips, ip)
-	}
-
-	return ips
 }
 
 func (a *TorBlock) UpdateWorker() {
@@ -134,14 +106,18 @@ func (a *TorBlock) UpdateBlockedIPs() {
 	bodyStr := string(body)
 
 	foundIPStrs := ipRegex.FindAllString(bodyStr, -1)
-	foundIPs := make([]net.IP, 0, len(foundIPStrs))
+	builder := netaddr.IPSetBuilder{}
 	for _, ipStr := range foundIPStrs {
-		ip := net.ParseIP(ipStr)
-		if ip != nil {
-			foundIPs = append(foundIPs, ip)
+		ip, err := netaddr.ParseIP(ipStr)
+		if err == nil {
+			builder.Add(ip)
 		}
 	}
-	a.blockedIPs = foundIPs
-
-	log.Printf("torblock: updated blocked ip list (found %d ips)", len(foundIPs))
+	blockedIPs, err := builder.IPSet()
+	if err != nil {
+		log.Printf("torblock: failed to build blocked ip set: %s", err)
+		return
+	}
+	a.blockedIPs = blockedIPs
+	log.Printf("torblock: updated blocked ip list (found %d ips)", len(foundIPStrs))
 }

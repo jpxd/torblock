@@ -3,21 +3,12 @@ package torblock_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/jpxd/torblock"
 )
-
-func TestMain(m *testing.M) {
-	// Disable logging output in tests
-	log.SetOutput(ioutil.Discard)
-	os.Exit(m.Run())
-}
 
 func TestConfig(t *testing.T) {
 	ctx := context.Background()
@@ -38,6 +29,14 @@ func TestConfig(t *testing.T) {
 	_, err = torblock.New(ctx, next, cfg, "torblock")
 	if err == nil {
 		t.Fatal("no error though bad address url in config")
+	}
+
+	// Unreachable URLs dont error but only warn
+	cfg = torblock.CreateConfig()
+	cfg.AddressListURL = "https://badurl.test123/test"
+	_, err = torblock.New(ctx, next, cfg, "torblock")
+	if err != nil {
+		t.Fatal("unreachable url errored but should have only warned")
 	}
 
 	// Too short update intervals
@@ -65,25 +64,13 @@ func TestRequests(t *testing.T) {
 	const badIP = "176.10.99.200"
 	const goodIP = "127.0.0.1"
 
-	// Blocked IP in RemoteAddr
+	// Blocked IP
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.RemoteAddr = fmt.Sprintf("%s:%d", badIP, 1234)
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, req)
-	if recorder.Result().StatusCode != http.StatusForbidden {
-		t.Errorf("invalid status code: %d", recorder.Result().StatusCode)
-	}
-
-	// Blocked IP in X-Forwarded-For
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, "http://localhost", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Add("X-Forwarded-For", fmt.Sprintf("%s, %s", goodIP, badIP))
-	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 	if recorder.Result().StatusCode != http.StatusForbidden {
 		t.Errorf("invalid status code: %d", recorder.Result().StatusCode)
