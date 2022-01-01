@@ -1,0 +1,24 @@
+version: "3.3"
+services:
+
+  traefik:
+    image: traefik:latest
+    command:
+      - --log.level=DEBUG
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --experimental.localPlugins.example.moduleName=github.com/jpxd/torblock
+    ports:
+      - 80:80
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../.:/plugins-local/src/github.com/jpxd/torblock
+
+  whoami:
+    image: traefik/whoami:latest
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whoami.rule=Host(`test.dev.internal`)
+      - traefik.http.routers.whoami.entrypoints=web
