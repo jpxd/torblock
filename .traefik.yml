@@ -4,3 +4,7 @@ type: middleware
 import: github.com/jpxd/torblock
 
 summary: 'Blocks Tor exit nodes from accessing services'
+
+testData:
+  AddressListURL: "https://check.torproject.org/exit-addresses"
+  UpdateInterval: 3600
