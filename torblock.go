@@ -11,7 +11,7 @@ import (
 	"text/template"
 	"time"
 
-	"inet.af/netaddr"
+	"github.com/jpxd/torblock/netaddr"
 )
 
 var ipRegex = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+\b`)

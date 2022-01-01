@@ -26,8 +26,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"go4.org/intern"
 )
 
 // Sizes: (64-bit)
@@ -67,15 +65,15 @@ type IP struct {
 	// z6noz means an IPv6 address without a zone.
 	//
 	// Otherwise it's the interned zone name string.
-	z *intern.Value
+	z *string
 }
 
 // z0, z4, and z6noz are sentinel IP.z values.
 // See the IP type's field docs.
 var (
-	z0    = (*intern.Value)(nil)
-	z4    = new(intern.Value)
-	z6noz = new(intern.Value)
+	z0    *string = nil
+	z4    *string = String("z4")
+	z6noz *string = String("z6noz")
 )
 
 // IPv6LinkLocalAllNodes returns the IPv6 link-local all nodes multicast
@@ -435,8 +433,7 @@ func (ip IP) Zone() string {
 	if ip.z == nil {
 		return ""
 	}
-	zone, _ := ip.z.Get().(string)
-	return zone
+	return *ip.z
 }
 
 // Compare returns an integer comparing two IPs.
@@ -544,7 +541,7 @@ func (ip IP) WithZone(zone string) IP {
 		ip.z = z6noz
 		return ip
 	}
-	ip.z = intern.GetByString(zone)
+	ip.z = String(zone)
 	return ip
 }
 
