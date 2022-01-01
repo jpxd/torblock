@@ -1,7 +1,7 @@
-# go4.org/intern v0.0.0-20210108033219-3eb7198706b2
+# go4.org/intern v0.0.0-20211027215823-ae77deb06f29
 go4.org/intern
-# go4.org/unsafe/assume-no-moving-gc v0.0.0-20201222180813-1025295fd063
+# go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37
 go4.org/unsafe/assume-no-moving-gc
-# inet.af/netaddr v0.0.0-20210704172029-d1acf45c3514
+# inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 ## explicit
 inet.af/netaddr
