@@ -5,30 +5,29 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"regexp"
 	"text/template"
 	"time"
-
-	"github.com/jpxd/torblock/netaddr"
 )
 
 var ipRegex = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+\b`)
 
 // Config the plugin configuration.
 type Config struct {
-	Enabled        bool
-	AddressListURL string
-	UpdateInterval int32
+	Enabled               bool
+	AddressListURL        string
+	UpdateIntervalSeconds int32
 }
 
 // CreateConfig creates the default plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
-		Enabled:        true,
-		AddressListURL: "https://check.torproject.org/exit-addresses",
-		UpdateInterval: 3600,
+		Enabled:               true,
+		AddressListURL:        "https://check.torproject.org/exit-addresses",
+		UpdateIntervalSeconds: 3600,
 	}
 }
 
@@ -40,7 +39,7 @@ type TorBlock struct {
 	enabled        bool
 	addressListURL string
 	updateInterval time.Duration
-	blockedIPs     *netaddr.IPSet
+	blockedIPs     *IPv4Set
 }
 
 // New creates a new Demo plugin.
@@ -49,7 +48,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse exit-addresses url")
 	}
-	if config.UpdateInterval < 60 {
+	if config.UpdateIntervalSeconds < 60 {
 		return nil, fmt.Errorf("update interval cannot be lower than 60 seconds")
 	}
 
@@ -59,8 +58,8 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		template:       template.New("torblock").Delims("[[", "]]"),
 		enabled:        config.Enabled,
 		addressListURL: config.AddressListURL,
-		updateInterval: time.Duration(config.UpdateInterval) * time.Second,
-		blockedIPs:     &netaddr.IPSet{},
+		updateInterval: time.Duration(config.UpdateIntervalSeconds) * time.Second,
+		blockedIPs:     CreateIPv4Set(),
 	}
 	a.UpdateBlockedIPs()
 	go a.UpdateWorker()
@@ -69,23 +68,35 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 }
 
 func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	// Check if enabled
 	if !a.enabled {
 		a.next.ServeHTTP(rw, req)
 		return
 	}
 
-	remoteAddr, err := netaddr.ParseIPPort(req.RemoteAddr)
+	// Extract IP from remote address
+	remoteHost, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err != nil {
-		log.Printf("torblock: bad request remote address")
+		log.Printf("torblock: failed to extract ip from remote address: %v", err)
+		a.next.ServeHTTP(rw, req)
 		return
 	}
 
-	if a.blockedIPs.Contains(remoteAddr.IP()) {
-		log.Printf("torblock: request denied (%s)", req.RemoteAddr)
+	// Parse the IP, and skip filtering if not a valid IPv4 address
+	remoteIP, err := ParseIPv4(remoteHost)
+	if err != nil {
+		a.next.ServeHTTP(rw, req)
+		return
+	}
+
+	// Check if the IP is blocked and cancel request if needed
+	if a.blockedIPs.Contains(remoteIP) {
+		log.Printf("torblock: request denied (%s)", remoteHost)
 		rw.WriteHeader(http.StatusForbidden)
 		return
 	}
 
+	// Continue
 	a.next.ServeHTTP(rw, req)
 }
 
@@ -113,18 +124,13 @@ func (a *TorBlock) UpdateBlockedIPs() {
 	bodyStr := string(body)
 
 	foundIPStrs := ipRegex.FindAllString(bodyStr, -1)
-	builder := netaddr.IPSetBuilder{}
+	newSet := CreateIPv4Set()
 	for _, ipStr := range foundIPStrs {
-		ip, err := netaddr.ParseIP(ipStr)
+		ip, err := ParseIPv4(ipStr)
 		if err == nil {
-			builder.Add(ip)
+			newSet.Add(ip)
 		}
 	}
-	blockedIPs, err := builder.IPSet()
-	if err != nil {
-		log.Printf("torblock: failed to build blocked ip set: %s", err)
-		return
-	}
-	a.blockedIPs = blockedIPs
+	a.blockedIPs = newSet
 	log.Printf("torblock: updated blocked ip list (found %d ips)", len(foundIPStrs))
 }
