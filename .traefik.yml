@@ -6,5 +6,6 @@ import: github.com/jpxd/torblock
 summary: 'Blocks Tor exit nodes from accessing services'
 
 testData:
+  Enabled: true
   AddressListURL: "https://check.torproject.org/exit-addresses"
   UpdateInterval: 3600

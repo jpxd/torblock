@@ -18,6 +18,7 @@ var ipRegex = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+\b`)
 
 // Config the plugin configuration.
 type Config struct {
+	Enabled        bool
 	AddressListURL string
 	UpdateInterval int32
 }
@@ -25,6 +26,7 @@ type Config struct {
 // CreateConfig creates the default plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
+		Enabled:        true,
 		AddressListURL: "https://check.torproject.org/exit-addresses",
 		UpdateInterval: 3600,
 	}
@@ -35,6 +37,7 @@ type TorBlock struct {
 	next           http.Handler
 	name           string
 	template       *template.Template
+	enabled        bool
 	addressListURL string
 	updateInterval time.Duration
 	blockedIPs     *netaddr.IPSet
@@ -54,6 +57,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		next:           next,
 		name:           name,
 		template:       template.New("torblock").Delims("[[", "]]"),
+		enabled:        config.Enabled,
 		addressListURL: config.AddressListURL,
 		updateInterval: time.Duration(config.UpdateInterval) * time.Second,
 		blockedIPs:     &netaddr.IPSet{},
@@ -65,6 +69,11 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 }
 
 func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if !a.enabled {
+		a.next.ServeHTTP(rw, req)
+		return
+	}
+
 	remoteAddr, err := netaddr.ParseIPPort(req.RemoteAddr)
 	if err != nil {
 		log.Printf("torblock: bad request remote address")
@@ -72,7 +81,7 @@ func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	if a.blockedIPs.Contains(remoteAddr.IP()) {
-		log.Printf("torblock: request denied (%s)", remoteAddr.IP())
+		log.Printf("torblock: request denied (%s)", req.RemoteAddr)
 		rw.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -87,8 +96,6 @@ func (a *TorBlock) UpdateWorker() {
 }
 
 func (a *TorBlock) UpdateBlockedIPs() {
-	log.Printf("torblock: updating blocked ip list")
-
 	res, err := http.DefaultClient.Get(a.addressListURL)
 	if err != nil {
 		log.Printf("torblock: failed to update address list: %s", err)
