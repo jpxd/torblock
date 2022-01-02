@@ -20,7 +20,7 @@ experimental:
   plugins:
     torblock:
       moduleName: github.com/jpxd/torblock
-      version: v0.1.0
+      version: v0.1.1
 ```
 
 Here is an example of a file provider dynamic configuration (given here in YAML), where the interesting part is the `http.middlewares` section:
