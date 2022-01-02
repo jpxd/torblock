@@ -1,3 +1,4 @@
+// Package torblock contains a Traefik plugin for blocking requests from the Tor network
 package torblock
 
 import (
@@ -15,11 +16,11 @@ import (
 
 var ipRegex = regexp.MustCompile(`\b\d+\.\d+\.\d+\.\d+\b`)
 
-// Config the plugin configuration.
+// Config for the plugin configuration.
 type Config struct {
 	Enabled               bool
 	AddressListURL        string
-	UpdateIntervalSeconds int32
+	UpdateIntervalSeconds int
 }
 
 // CreateConfig creates the default plugin configuration.
@@ -40,6 +41,7 @@ type TorBlock struct {
 	addressListURL string
 	updateInterval time.Duration
 	blockedIPs     *IPv4Set
+	client         *http.Client
 }
 
 // New creates a new Demo plugin.
@@ -60,6 +62,9 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 		addressListURL: config.AddressListURL,
 		updateInterval: time.Duration(config.UpdateIntervalSeconds) * time.Second,
 		blockedIPs:     CreateIPv4Set(),
+		client: &http.Client{
+			Timeout: time.Second * 10,
+		},
 	}
 	a.UpdateBlockedIPs()
 	go a.UpdateWorker()
@@ -67,6 +72,7 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	return a, nil
 }
 
+// ServeHTTP handles all requests flowing through the plugin.
 func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// Check if enabled
 	if !a.enabled {
@@ -100,14 +106,16 @@ func (a *TorBlock) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	a.next.ServeHTTP(rw, req)
 }
 
+// UpdateWorker regularly updates the list of blocked IPs in a configurable update interval.
 func (a *TorBlock) UpdateWorker() {
 	for range time.Tick(a.updateInterval) {
 		a.UpdateBlockedIPs()
 	}
 }
 
+// UpdateBlockedIPs updates the list of blocked IPs via the addressListURL.
 func (a *TorBlock) UpdateBlockedIPs() {
-	res, err := http.DefaultClient.Get(a.addressListURL)
+	res, err := a.client.Get(a.addressListURL)
 	if err != nil {
 		log.Printf("torblock: failed to update address list: %s", err)
 		return

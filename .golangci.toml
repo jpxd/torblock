@@ -36,6 +36,15 @@
     "testpackage",
     "paralleltest",
     "tparallel",
+    "wsl",
+    "bodyclose",
+    "varnamelen",
+    "gomnd",
+    "cyclop",
+    "gocritic",
+    "nestif",
+    "exhaustivestruct",
+    "noctx",
   ]
 
 [issues]
