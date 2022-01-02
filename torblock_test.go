@@ -41,7 +41,7 @@ func TestConfig(t *testing.T) {
 
 	// Too short update intervals
 	cfg = torblock.CreateConfig()
-	cfg.UpdateInterval = 1
+	cfg.UpdateIntervalSeconds = 1
 	_, err = torblock.New(ctx, next, cfg, "torblock")
 	if err == nil {
 		t.Fatal("no error though to low update interval")
